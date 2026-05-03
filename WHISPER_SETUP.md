@@ -46,10 +46,6 @@ npx tsx server/index.ts
 - Make sure you added it to `.env` (not `env.example`)
 - Restart the server after adding it
 
-### "Insufficient quota" or billing errors
-- You may need to add payment method to OpenAI account
-- Free tier has limited usage
-
 ### Still getting empty transcriptions
 - Check server logs for detailed error messages
 - Verify your API key is valid
