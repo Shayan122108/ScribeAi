@@ -4,14 +4,14 @@ AI-powered meeting transcription and summarization tool built with Next.js 14, G
 
 ## Features
 
-- 🎤 **Real-time Audio Transcription**: Capture audio from microphone or browser tab (Google Meet/Zoom)
-- 🤖 **AI-Powered Summarization**: Automatic meeting summaries with key points, action items, and decisions
-- 📝 **Live Transcript Streaming**: Real-time transcript updates via Socket.io
-- 🔐 **Authentication**: Secure user authentication with Better Auth
-- 💾 **Session Management**: Store and retrieve past sessions with full transcripts
-- ⏸️ **Pause/Resume**: Control recording with pause and resume functionality
-- 🎯 **Speaker Diarization**: Identify and label different speakers in meetings
-- 📊 **Scalable Architecture**: Designed to handle long sessions (1+ hours) with chunked streaming
+-  **Real-time Audio Transcription**: Capture audio from microphone or browser tab (Google Meet/Zoom)
+-  **AI-Powered Summarization**: Automatic meeting summaries with key points, action items, and decisions
+-  **Live Transcript Streaming**: Real-time transcript updates via Socket.io
+-  **Authentication**: Secure user authentication with Better Auth
+-  **Session Management**: Store and retrieve past sessions with full transcripts
+-  **Pause/Resume**: Control recording with pause and resume functionality
+-  **Speaker Diarization**: Identify and label different speakers in meetings
+-  **Scalable Architecture**: Designed to handle long sessions (1+ hours) with chunked streaming
 
 ## Tech Stack
 
@@ -19,7 +19,7 @@ AI-powered meeting transcription and summarization tool built with Next.js 14, G
 - **Backend**: Node.js, Express, Socket.io
 - **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: Better Auth
-- **AI**: Google Gemini API (transcription & summarization)
+- **AI**: Openai Whisper API (transcription & summarization)
 - **Real-time**: Socket.io for WebSocket communication
 
 ## Prerequisites
@@ -48,7 +48,7 @@ Edit `.env` and fill in:
 
 ```env
 DATABASE_URL="postgresql://user:password@localhost:5432/scribeai"
-GEMINI_API_KEY="your-gemini-api-key"
+OPENAI_API_KEY="your-openai-api-key"
 BETTER_AUTH_SECRET="generate-a-random-secret-here"
 BETTER_AUTH_URL="http://localhost:3000"
 SOCKET_SERVER_PORT="3100"
@@ -118,7 +118,7 @@ sequenceDiagram
 - **Client (`app/sessions/page.tsx`)**: Recording UI with XState machine for state management
 - **Recorder Hook (`hooks/useRecorderMachine.ts`)**: Handles MediaRecorder, chunking, and Socket.io communication
 - **Socket Server (`server/index.ts`)**: Receives audio chunks, transcribes via Gemini, manages sessions
-- **Gemini Integration (`lib/gemini.ts`)**: Audio transcription and text summarization
+- **Openai Integration (`lib/whisper.ts`)**: Audio transcription and text summarization
 - **API Routes (`app/api/`)**: REST endpoints for session management
 - **Database (`prisma/schema.prisma`)**: User, Session, TranscriptChunk, Summary models
 
@@ -164,15 +164,6 @@ scribeai/
     └── session.ts        # TypeScript types
 ```
 
-## API Endpoints
-
-### REST API
-
-- `GET /api/sessions` - List user sessions
-- `GET /api/sessions/[id]` - Get session details
-- `DELETE /api/sessions/[id]` - Delete session
-- `POST /api/auth/sign-in` - Sign in
-- `POST /api/auth/sign-up` - Sign up
 
 ### Socket.io Events
 
@@ -202,13 +193,6 @@ scribeai/
 - `npm run typecheck` - TypeScript type checking
 - `npm run prisma:generate` - Generate Prisma client
 - `npm run prisma:migrate` - Run database migrations
-
-### Code Quality
-
-- ESLint + Prettier for code formatting
-- TypeScript for type safety
-- Zod for runtime validation
-- JSDoc comments for documentation
 
 ## Deployment
 
@@ -246,7 +230,7 @@ npm run start
 
 ### Transcription Not Working
 
-- Verify `GEMINI_API_KEY` is set correctly
+- Verify if api key is set correctly
 - Check Socket.io connection (browser console)
 - Ensure audio chunks are being sent (check network tab)
 
