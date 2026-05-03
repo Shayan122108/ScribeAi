@@ -19,7 +19,7 @@ AI-powered meeting transcription and summarization tool built with Next.js 14, G
 - **Backend**: Node.js, Express, Socket.io
 - **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: Better Auth
-- **AI**: Openai Whisper API (transcription & summarization)
+- **AI**: Openai Whisper API (transcription) and Gemini API (summarization)
 - **Real-time**: Socket.io for WebSocket communication
 
 ## Prerequisites
@@ -48,7 +48,8 @@ Edit `.env` and fill in:
 
 ```env
 DATABASE_URL="postgresql://user:password@localhost:5432/scribeai"
-OPENAI_API_KEY="your-openai-api-key"
+GEMINI_API_KEY="your-gemini-api-key"
+OPENAI_API_KEY="openai_api_key"
 BETTER_AUTH_SECRET="generate-a-random-secret-here"
 BETTER_AUTH_URL="http://localhost:3000"
 SOCKET_SERVER_PORT="3100"
@@ -118,7 +119,8 @@ sequenceDiagram
 - **Client (`app/sessions/page.tsx`)**: Recording UI with XState machine for state management
 - **Recorder Hook (`hooks/useRecorderMachine.ts`)**: Handles MediaRecorder, chunking, and Socket.io communication
 - **Socket Server (`server/index.ts`)**: Receives audio chunks, transcribes via Gemini, manages sessions
-- **Openai Integration (`lib/whisper.ts`)**: Audio transcription and text summarization
+- **Gemini Integration(`lib/gemini.ts`)**: Text summarization
+- **Openai Integration (`lib/whisper.ts`)**: Audio transcription 
 - **API Routes (`app/api/`)**: REST endpoints for session management
 - **Database (`prisma/schema.prisma`)**: User, Session, TranscriptChunk, Summary models
 
@@ -134,7 +136,7 @@ sequenceDiagram
 
 ## Long Session Scalability
 
-One-hour meetings can exceed 1 GB of raw PCM audio, so ScribeAI treats streaming, buffering, and persistence as separate workloads. On the client we normalize to 16 kHz mono, then chunk every 30 seconds (≈500 KB Opus) to keep memory deterministic. Each chunk carries monotonically increasing sequence IDs; the Socket server acknowledges IDs, letting the client requeue only missing ranges—critical when laptops sleep or a tab crashes. The Node server never stores more than N (configurable) chunks in RAM per session. Once a chunk is forwarded to Gemini it's flushed to ephemeral disk (`/tmp/sessions/{id}`) or an object store like S3, enabling replay if Gemini fails mid-stream. Processing and persistence run on worker queues so a burst of completions cannot block live ingest. Socket rooms are sharded across instances with Redis adapter, so concurrent enterprise users can scale horizontally. Summaries operate on concatenated transcript text rather than raw audio, reducing Gemini cost. Finally, every DB write is idempotent: transcript chunks use `(sessionId, sequence)` unique constraints, summaries use an upsert keyed by session. Together these strategies avoid memory bloat, allow resumable uploads, and keep the UI responsive even when dozens of users stream 60-minute meetings simultaneously.
+One-hour meetings can exceed 1 GB of raw PCM audio, so ScribeAI treats streaming, buffering, and persistence as separate workloads. On the client we normalize to 16 kHz mono, then chunk every 30 seconds (≈500 KB Opus) to keep memory deterministic. Each chunk carries monotonically increasing sequence IDs; the Socket server acknowledges IDs, letting the client requeue only missing ranges—critical when laptops sleep or a tab crashes. The Node server never stores more than N (configurable) chunks in RAM per session. Once a chunk is forwarded it's passed to OpenAI Whisper (whisper-1) for speech-to-text transcription—returning verbose_json with word-level timestamps—then flushed to ephemeral disk (/tmp/sessions/{id}) or an object store like S3, enabling replay if transcription fails mid-stream. Whisper was chosen because it is purpose-built for speech recognition, delivering more reliable real-time accuracy at $0.006/minute; Gemini is reserved downstream for summarization, which operates on the concatenated transcript text rather than raw audio, reducing cost significantly. Processing and persistence run on worker queues so a burst of completions cannot block live ingest. Socket rooms are sharded across instances with Redis adapter, so concurrent enterprise users can scale horizontally. Finally, every DB write is idempotent: transcript chunks use (sessionId, sequence) unique constraints, summaries use an upsert keyed by session. Together these strategies avoid memory bloat, allow resumable uploads, and keep the UI responsive even when dozens of users stream 60-minute meetings simultaneously.
 
 ## Project Structure
 
