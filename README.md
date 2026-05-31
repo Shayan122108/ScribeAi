@@ -40,10 +40,6 @@ npm install
 
 ### 2. Set Up Environment Variables
 
-```bash
-cp env.example .env
-```
-
 Edit `.env` and fill in:
 
 ```env
@@ -54,11 +50,6 @@ BETTER_AUTH_SECRET="generate-a-random-secret-here"
 BETTER_AUTH_URL="http://localhost:3000"
 SOCKET_SERVER_PORT="3100"
 NEXT_PUBLIC_SOCKET_URL="http://localhost:3100"
-```
-
-Generate `BETTER_AUTH_SECRET`:
-```bash
-openssl rand -base64 32
 ```
 
 ### 3. Set Up Database
