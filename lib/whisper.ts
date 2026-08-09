@@ -9,17 +9,23 @@ if (!apiKey) {
 
 const openai = apiKey ? new OpenAI({ apiKey }) : null;
 
+// Configurable via env so a model upgrade never requires a code change
+const WHISPER_MODEL = process.env.WHISPER_MODEL ?? "whisper-1";
+
+// Configurable via env; defaults to auto-detection when not set
+const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE ?? undefined;
+
 /**
  * Transcribes audio using OpenAI's Whisper model.
- * 
+ *
  * @param audioBase64 - Base64-encoded audio data
  * @param mimeType - MIME type of the audio (e.g., "audio/webm", "audio/mp4")
- * @returns Transcribed text with speaker tag and confidence
+ * @returns Transcribed text with speaker tag
  */
 export async function transcribeAudio(
     audioBase64: string,
     mimeType: string = "audio/webm"
-): Promise<{ text: string; speakerTag: string; confidence?: number }> {
+): Promise<{ text: string; speakerTag: string }> {
     if (!openai) {
         throw new Error("OpenAI client not configured. Please set OPENAI_API_KEY.");
     }
@@ -32,40 +38,31 @@ export async function transcribeAudio(
         const extension = getExtensionFromMimeType(mimeType);
 
         // Create a File object from the buffer
-        // Whisper API expects a file-like object
         const file = new File([audioBuffer], `audio.${extension}`, { type: mimeType });
 
         // Call Whisper API
         const transcription = await openai.audio.transcriptions.create({
-            file: file,
-            model: "whisper-1",
-            language: "en", // Auto-detect if not specified, but "en" is faster
-            response_format: "verbose_json", // Get detailed response with timestamps
+            file,
+            model: WHISPER_MODEL,
+            ...(WHISPER_LANGUAGE ? { language: WHISPER_LANGUAGE } : {}),
+            response_format: "text",
         });
 
-        console.log(`[Whisper] Transcribed: "${transcription.text}" (duration: ${transcription.duration}s)`);
-
-        // Extract text
-        const text = transcription.text?.trim() || "";
+        // eslint-disable-next-line no-console
+        console.log(`[Whisper] Transcribed ${extension} chunk (model: ${WHISPER_MODEL})`);
 
         // Whisper doesn't provide speaker diarization by default
-        // For now, we'll use a single speaker tag
-        // You can add speaker diarization using additional services if needed
-
         return {
-            text: text,
-            speakerTag: "speaker",
-            confidence: 0.9 // Whisper doesn't provide confidence, using high default
+            text: (transcription as unknown as string)?.trim() ?? "",
+            speakerTag: "speaker"
         };
     } catch (error) {
         // eslint-disable-next-line no-console
         console.error("Whisper transcription error:", error);
 
-        // Return empty transcription on error
         return {
             text: "",
-            speakerTag: "speaker",
-            confidence: 0
+            speakerTag: "speaker"
         };
     }
 }

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 
+import { authClient } from "@/lib/auth-client";
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -19,16 +21,23 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const endpoint = isSignUp ? "/api/auth/signup" : "/api/auth/signin";
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || "Authentication failed");
+      if (isSignUp) {
+        const { error: signUpError } = await authClient.signUp.email({
+          email,
+          password,
+          name: email.split("@")[0], // Fallback name
+        });
+        if (signUpError) {
+          throw new Error(signUpError.message || "Sign up failed");
+        }
+      } else {
+        const { error: signInError } = await authClient.signIn.email({
+          email,
+          password,
+        });
+        if (signInError) {
+          throw new Error(signInError.message || "Sign in failed");
+        }
       }
 
       // Redirect to sessions page on success

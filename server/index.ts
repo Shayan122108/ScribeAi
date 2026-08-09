@@ -16,8 +16,10 @@ const PORT = Number(process.env.SOCKET_SERVER_PORT ?? 3100);
 const app = express();
 const httpServer = http.createServer(app);
 
+const ALLOWED_ORIGIN = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:3000";
+
 const io = new Server(httpServer, {
-  cors: { origin: "*" }
+  cors: { origin: ALLOWED_ORIGIN, credentials: true }
 });
 
 const startSchema = z.object({
@@ -35,8 +37,7 @@ const chunkSchema = z.object({
   speakerTag: z.string().default("speaker"),
   audio: z.string().min(10), // base64
   mimeType: z.string().optional().default("audio/webm"),
-  text: z.string().optional(),
-  confidence: z.number().optional()
+  text: z.string().optional()
 });
 
 type ChunkPayload = z.infer<typeof chunkSchema>;
@@ -90,7 +91,6 @@ io.on("connection", (socket) => {
     // Transcribe audio if text not provided
     let transcriptText = payload.text;
     let speakerTag = payload.speakerTag;
-    let confidence = payload.confidence;
 
     if (!transcriptText && payload.audio) {
       try {
@@ -100,12 +100,10 @@ io.on("connection", (socket) => {
         );
         transcriptText = transcription.text;
         speakerTag = transcription.speakerTag;
-        confidence = transcription.confidence;
 
-        // Update payload with transcription
+        // Update payload with transcription result
         payload.text = transcriptText;
         payload.speakerTag = speakerTag;
-        payload.confidence = confidence;
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error(`Transcription failed for chunk ${payload.sequence}:`, error);
@@ -118,8 +116,7 @@ io.on("connection", (socket) => {
       sessionId: payload.sessionId,
       sequence: payload.sequence,
       text: transcriptText ?? "",
-      speakerTag,
-      confidence
+      speakerTag
     });
   });
 
@@ -145,7 +142,8 @@ io.on("connection", (socket) => {
     if (!sessionId) return;
     io.to(sessionId).emit("session:status", { status: "PROCESSING" });
     const chunks = buffer.get(sessionId) ?? [];
-    const transcript = chunks.map((chunk) => chunk.text).join("\n");
+    // Filter out empty/failed chunks before building the transcript
+    const transcript = chunks.map((c) => c.text).filter(Boolean).join("\n");
 
     await prisma.session.update({
       where: { id: sessionId },
@@ -168,8 +166,7 @@ io.on("connection", (socket) => {
             },
             update: {
               text: chunk.text ?? "",
-              speakerTag: chunk.speakerTag,
-              confidence: chunk.confidence
+              speakerTag: chunk.speakerTag
             },
             create: {
               sessionId: chunk.sessionId,
@@ -177,8 +174,7 @@ io.on("connection", (socket) => {
               text: chunk.text ?? "",
               speakerTag: chunk.speakerTag,
               startedAt: new Date(chunk.startedAt),
-              endedAt: new Date(chunk.endedAt),
-              confidence: chunk.confidence
+              endedAt: new Date(chunk.endedAt)
             }
           });
         }
@@ -202,12 +198,15 @@ io.on("connection", (socket) => {
         summary
       });
     } catch (error) {
+      // eslint-disable-next-line no-console
+      console.error("Failed to process summary for session", sessionId, ":", error);
       await prisma.session.update({
         where: { id: sessionId },
         data: { status: "FAILED" }
       });
+      const errorMessage = error instanceof Error ? error.message : "Failed to process summary";
       io.to(sessionId).emit("session:error", {
-        message: "Failed to process summary",
+        message: errorMessage,
         error
       });
     } finally {

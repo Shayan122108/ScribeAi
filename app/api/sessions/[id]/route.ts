@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/sessions/[id]
- * Fetch a specific session with full transcript
+ * Fetch a specific session with full transcript.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const session = await prisma.session.findUnique({
+    const session = await auth.api.getSession({
+      headers: request.headers
+    });
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const record = await prisma.session.findUnique({
       where: { id: params.id },
       include: {
         summary: true,
@@ -24,11 +33,16 @@ export async function GET(
       }
     });
 
-    if (!session) {
+    if (!record) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ session });
+    // Ensure the requesting user owns this session
+    if (record.userId !== session.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    return NextResponse.json({ session: record });
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("Error fetching session:", error);
@@ -41,16 +55,37 @@ export async function GET(
 
 /**
  * DELETE /api/sessions/[id]
- * Delete a session and all associated data
+ * Delete a session and all associated data.
+ * Requires authentication and ownership of the session.
  */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    await prisma.session.delete({
-      where: { id: params.id }
+    const session = await auth.api.getSession({
+      headers: request.headers
     });
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify ownership before deleting
+    const record = await prisma.session.findUnique({
+      where: { id: params.id },
+      select: { userId: true }
+    });
+
+    if (!record) {
+      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+    }
+
+    if (record.userId !== session.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    await prisma.session.delete({ where: { id: params.id } });
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -62,4 +97,3 @@ export async function DELETE(
     );
   }
 }
-

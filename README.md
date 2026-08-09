@@ -1,36 +1,39 @@
 # ScribeAI
 
-AI-powered meeting transcription and summarization tool built with Next.js 14, Gemini, Socket.io, and Postgres.
+AI-powered meeting transcription and summarization tool built with Next.js 14, OpenAI Whisper, Google Gemini, Socket.io, PostgreSQL, and a Chrome Browser Extension.
 
 ## Features
 
-- 🎤 **Real-time Audio Transcription**: Capture audio from microphone or browser tab (Google Meet/Zoom)
-- 🤖 **AI-Powered Summarization**: Automatic meeting summaries with key points, action items, and decisions
-- 📝 **Live Transcript Streaming**: Real-time transcript updates via Socket.io
-- 🔐 **Authentication**: Secure user authentication with Better Auth
-- 💾 **Session Management**: Store and retrieve past sessions with full transcripts
-- ⏸️ **Pause/Resume**: Control recording with pause and resume functionality
-- 🎯 **Speaker Diarization**: Identify and label different speakers in meetings
-- 📊 **Scalable Architecture**: Designed to handle long sessions (1+ hours) with chunked streaming
+- 🎤 **Real-time Audio Transcription**: Capture audio directly from microphone or browser tabs (Google Meet, Zoom, Webex)
+- 🧩 **Chrome Extension Integration**: Built-in `scribeai_extension` for capturing tab audio seamlessly
+- ⚡ **OpenAI Whisper Speech-to-Text**: Fast and accurate audio transcription via OpenAI's Whisper model (`whisper-1`)
+- 🤖 **Gemini-Powered Summarization**: Automatic meeting summaries with key points, action items, and decisions using `gemini-2.0-flash`
+- 📝 **Live Transcript Streaming**: Real-time WebSocket updates over Socket.io
+- 🔐 **Authentication**: User authentication with Better Auth
+- 💾 **Session Management**: Full persistence for sessions, transcript chunks, and summaries using Prisma ORM
+- ⏸️ **Pause / Resume / Stop**: Interactive recording controls with state management via XState machines
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14 (App Router), React, TypeScript, Tailwind CSS, XState
-- **Backend**: Node.js, Express, Socket.io
+- **Frontend**: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, TanStack React Query, XState
+- **Backend & WebSockets**: Node.js, Express, Socket.io, `tsx`
 - **Database**: PostgreSQL with Prisma ORM
 - **Authentication**: Better Auth
-- **AI**: Google Gemini API (transcription & summarization)
-- **Real-time**: Socket.io for WebSocket communication
+- **AI Models**: 
+  - **OpenAI Whisper (`whisper-1`)**: Real-time audio transcription
+  - **Google Gemini (`gemini-2.0-flash`)**: Meeting summarization (key points, action items, decisions)
+- **Browser Extension**: Manifest V3 Chrome Extension (`scribeai_extension`) for Chrome tab capture (`chrome.tabCapture`)
 
 ## Prerequisites
 
 - Node.js 18+ and npm
-- PostgreSQL database (local or cloud like Supabase)
-- Google Gemini API key ([Get one here](https://ai.google.dev))
+- PostgreSQL database (local or hosted e.g. Supabase, Neon)
+- OpenAI API Key ([Get one here](https://platform.openai.com/api-keys)) for Whisper transcription
+- Google Gemini API Key ([Get one here](https://ai.google.dev)) for transcript summarization
 
 ## Quick Start
 
-### 1. Clone and Install
+### 1. Clone and Install Dependencies
 
 ```bash
 git clone <your-repo-url>
@@ -40,22 +43,31 @@ npm install
 
 ### 2. Set Up Environment Variables
 
+Copy `env.example` to `.env`:
+
 ```bash
 cp env.example .env
 ```
 
-Edit `.env` and fill in:
+Configure the following variables in `.env`:
 
 ```env
 DATABASE_URL="postgresql://user:password@localhost:5432/scribeai"
-GEMINI_API_KEY="your-gemini-api-key"
+
+# Better Auth Configuration
 BETTER_AUTH_SECRET="generate-a-random-secret-here"
 BETTER_AUTH_URL="http://localhost:3000"
+
+# WebSocket Server Configuration
 SOCKET_SERVER_PORT="3100"
 NEXT_PUBLIC_SOCKET_URL="http://localhost:3100"
+
+# AI Provider API Keys
+OPENAI_API_KEY="sk-your-openai-api-key"
+GEMINI_API_KEY="your-gemini-api-key"
 ```
 
-Generate `BETTER_AUTH_SECRET`:
+Generate `BETTER_AUTH_SECRET` if needed:
 ```bash
 openssl rand -base64 32
 ```
@@ -63,203 +75,140 @@ openssl rand -base64 32
 ### 3. Set Up Database
 
 ```bash
-# Generate Prisma client
+# Generate Prisma Client
 npm run prisma:generate
 
-# Run migrations
+# Run Database Migrations
 npm run prisma:migrate
 ```
 
 ### 4. Start Development Servers
+
+Run both Next.js app and Socket.io server concurrently:
 
 ```bash
 npm run dev
 ```
 
 This starts:
-- Next.js app on `http://localhost:3000`
-- Socket.io server on `http://localhost:3100`
+- Next.js Web Application on `http://localhost:3000`
+- Express / Socket.io Backend Server on `http://localhost:3100`
 
-### 5. Access the Application
+Or start them individually:
+```bash
+npm run dev:next    # Next.js only
+npm run dev:server  # Socket.io server only
+```
 
-1. Open `http://localhost:3000`
-2. Sign up or sign in
-3. Navigate to `/sessions` to start recording
+### 5. Install Chrome Extension (Optional, for Tab Audio Capture)
 
-## Architecture Overview
+1. Open Google Chrome and go to `chrome://extensions/`
+2. Enable **Developer mode** (toggle switch in the top right)
+3. Click **Load unpacked**
+4. Select the `scribeai_extension` folder in this project
 
-### System Flow
+## System Architecture
 
 ```mermaid
 sequenceDiagram
-    participant U as Browser
-    participant S as Socket Server
-    participant G as Gemini API
-    participant DB as Postgres
+    participant U as Browser UI / Extension
+    participant S as Socket.io Server (Node/Express)
+    participant W as OpenAI Whisper API
+    participant G as Google Gemini API
+    participant DB as Postgres (Prisma)
 
-    U->>S: auth token + startSession
-    loop every 30s
-        U->>S: audio chunk (base64 WebM/Opus)
-        S->>G: transcribeAudio(chunk)
-        G-->>S: transcript text + speaker
-        S-->>U: socket event transcription:update
-        S->>DB: store transcript chunk
+    U->>S: session:start (sessionId, source, auth)
+    S->>DB: Upsert User & Session (RECORDING)
+    S-->>U: session:ack
+
+    loop Real-time Streaming (Audio Chunks)
+        U->>S: session:chunk (base64 audio, sequence)
+        S->>W: transcribeAudio(audio, mimeType)
+        W-->>S: transcript text
+        S-->>U: transcription:update (sequence, text)
     end
-    U->>S: stopSession
-    S->>DB: persist all transcript chunks
-    S->>G: summarizeTranscript(full text)
-    G-->>S: summary (keyPoints, actionItems, decisions)
-    S->>DB: store summary & mark completed
-    S-->>U: status:completed + summary
+
+    U->>S: session:stop (sessionId)
+    S->>DB: Update Session (PROCESSING)
+    S->>G: summarizeTranscript(full transcript)
+    G-->>S: summary JSON (keyPoints, actionItems, decisions)
+    S->>DB: Transaction: Persist Transcript Chunks & Summary
+    S->>DB: Update Session (COMPLETED)
+    S-->>U: session:status (COMPLETED + summary)
 ```
-
-### Key Components
-
-- **Client (`app/sessions/page.tsx`)**: Recording UI with XState machine for state management
-- **Recorder Hook (`hooks/useRecorderMachine.ts`)**: Handles MediaRecorder, chunking, and Socket.io communication
-- **Socket Server (`server/index.ts`)**: Receives audio chunks, transcribes via Gemini, manages sessions
-- **Gemini Integration (`lib/gemini.ts`)**: Audio transcription and text summarization
-- **API Routes (`app/api/`)**: REST endpoints for session management
-- **Database (`prisma/schema.prisma`)**: User, Session, TranscriptChunk, Summary models
-
-### Audio Processing Pipeline
-
-1. **Capture**: Browser `MediaRecorder` captures audio (mic or tab share)
-2. **Chunking**: Audio split into 30-second chunks (≈500 KB Opus)
-3. **Encoding**: Chunks base64-encoded and sent via Socket.io
-4. **Transcription**: Server sends chunks to Gemini API for transcription
-5. **Streaming**: Transcript updates streamed back to client in real-time
-6. **Storage**: Chunks stored in Postgres with sequence numbers
-7. **Summarization**: On stop, full transcript sent to Gemini for summary
-
-## Long Session Scalability
-
-One-hour meetings can exceed 1 GB of raw PCM audio, so ScribeAI treats streaming, buffering, and persistence as separate workloads. On the client we normalize to 16 kHz mono, then chunk every 30 seconds (≈500 KB Opus) to keep memory deterministic. Each chunk carries monotonically increasing sequence IDs; the Socket server acknowledges IDs, letting the client requeue only missing ranges—critical when laptops sleep or a tab crashes. The Node server never stores more than N (configurable) chunks in RAM per session. Once a chunk is forwarded to Gemini it's flushed to ephemeral disk (`/tmp/sessions/{id}`) or an object store like S3, enabling replay if Gemini fails mid-stream. Processing and persistence run on worker queues so a burst of completions cannot block live ingest. Socket rooms are sharded across instances with Redis adapter, so concurrent enterprise users can scale horizontally. Summaries operate on concatenated transcript text rather than raw audio, reducing Gemini cost. Finally, every DB write is idempotent: transcript chunks use `(sessionId, sequence)` unique constraints, summaries use an upsert keyed by session. Together these strategies avoid memory bloat, allow resumable uploads, and keep the UI responsive even when dozens of users stream 60-minute meetings simultaneously.
 
 ## Project Structure
 
 ```
 scribeai/
 ├── app/
-│   ├── api/              # Next.js API routes
-│   │   ├── auth/         # Better Auth endpoints
-│   │   └── sessions/     # Session CRUD
-│   ├── login/            # Authentication page
-│   ├── sessions/         # Main recording dashboard
-│   └── layout.tsx        # Root layout
+│   ├── api/                      # Next.js API routes (auth, sessions)
+│   │   ├── auth/                 # Better Auth endpoints
+│   │   └── sessions/             # Session CRUD REST API
+│   ├── login/                    # Authentication page
+│   ├── sessions/                 # Live recording & session management UI
+│   └── layout.tsx                # Root App Router layout
 ├── components/
-│   └── ui/               # Reusable UI components
+│   └── ui/                       # Reusable Tailwind UI components
 ├── hooks/
-│   └── useRecorderMachine.ts  # XState recorder logic
+│   └── useRecorderMachine.ts      # XState machine hook for recording logic
 ├── lib/
-│   ├── auth.ts           # Better Auth config
-│   ├── gemini.ts         # Gemini API integration
-│   ├── prisma.ts         # Prisma client
-│   └── socket-client.ts   # Socket.io client
-├── server/
-│   └── index.ts          # Socket.io server
+│   ├── auth.ts                   # Better Auth setup
+│   ├── auth-client.ts            # Client-side auth utilities
+│   ├── gemini.ts                 # Google Gemini API integration (summarization)
+│   ├── prisma.ts                 # Prisma client instance
+│   ├── socket-client.ts          # Socket.io client setup
+│   └── whisper.ts                # OpenAI Whisper API integration (transcription)
 ├── prisma/
-│   └── schema.prisma     # Database schema
-└── types/
-    └── session.ts        # TypeScript types
+│   └── schema.prisma             # Database schema (User, Session, TranscriptChunk, Summary)
+├── server/
+│   └── index.ts                  # Express + Socket.io backend server
+├── scribeai_extension/           # Chrome Extension (Manifest V3)
+│   ├── manifest.json
+│   ├── background.js             # Service worker for tab capture
+│   ├── content.js                # Page communication script
+│   ├── popup.html                # Extension popup UI
+│   └── popup.js                  # Popup script
+├── types/                        # Shared TypeScript type definitions
+└── WHISPER_SETUP.md              # Additional setup guide for Whisper API
 ```
 
-## API Endpoints
+## API Reference & Socket Events
 
-### REST API
+### REST API Endpoints
 
 - `GET /api/sessions` - List user sessions
-- `GET /api/sessions/[id]` - Get session details
-- `DELETE /api/sessions/[id]` - Delete session
-- `POST /api/auth/sign-in` - Sign in
-- `POST /api/auth/sign-up` - Sign up
+- `GET /api/sessions/[id]` - Retrieve session details and full transcripts
+- `DELETE /api/sessions/[id]` - Delete a session
+- `POST /api/auth/*` - Better Auth sign-in / sign-up endpoints
 
 ### Socket.io Events
 
 **Client → Server:**
-- `session:start` - Start new recording session
-- `session:chunk` - Send audio chunk
-- `session:pause` - Pause recording
-- `session:resume` - Resume recording
-- `session:stop` - Stop recording and process
+- `session:start` - Start new recording session (`{ sessionId, userId, userEmail, source }`)
+- `session:chunk` - Send base64 audio chunk (`{ sessionId, sequence, startedAt, endedAt, audio, mimeType }`)
+- `session:pause` - Pause current recording session (`{ sessionId }`)
+- `session:resume` - Resume paused session (`{ sessionId }`)
+- `session:stop` - Finalize recording and trigger AI summarization (`{ sessionId }`)
 
 **Server → Client:**
-- `session:ack` - Session started confirmation
-- `transcription:update` - New transcript chunk
-- `session:status` - Status change (PAUSED, PROCESSING, COMPLETED)
-- `session:error` - Error occurred
+- `session:ack` - Session initialized acknowledgment
+- `transcription:update` - Real-time transcript stream chunk (`{ sessionId, sequence, text, speakerTag }`)
+- `session:status` - Session state transition (`PAUSED`, `RECORDING`, `PROCESSING`, `COMPLETED`)
+- `session:error` - Error notification
 
-## Development
+## NPM Scripts
 
-### Scripts
-
-- `npm run dev` - Start Next.js + Socket server concurrently
-- `npm run dev:next` - Start Next.js only
-- `npm run dev:socket` - Start Socket server only
-- `npm run build` - Production build
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run typecheck` - TypeScript type checking
+- `npm run dev` - Start Next.js frontend and Socket server concurrently
+- `npm run dev:server` - Start Socket.io server with `tsx watch`
+- `npm run dev:next` - Start Next.js development server
+- `npm run build` - Build Next.js application for production
+- `npm run start` - Start Next.js production server
+- `npm run lint` - Run ESLint checks
+- `npm run typecheck` - Run TypeScript type checking
 - `npm run prisma:generate` - Generate Prisma client
-- `npm run prisma:migrate` - Run database migrations
-
-### Code Quality
-
-- ESLint + Prettier for code formatting
-- TypeScript for type safety
-- Zod for runtime validation
-- JSDoc comments for documentation
-
-## Deployment
-
-### Environment Variables
-
-Ensure all environment variables are set in your production environment:
-
-- `DATABASE_URL` - PostgreSQL connection string
-- `GEMINI_API_KEY` - Google Gemini API key
-- `BETTER_AUTH_SECRET` - Random secret for auth
-- `BETTER_AUTH_URL` - Your production URL
-- `SOCKET_SERVER_PORT` - Port for Socket.io server
-- `NEXT_PUBLIC_SOCKET_URL` - Public Socket.io URL
-
-### Database Migration
-
-```bash
-npm run prisma:migrate
-```
-
-### Build
-
-```bash
-npm run build
-npm run start
-```
-
-## Troubleshooting
-
-### Audio Not Recording
-
-- Check browser permissions for microphone/tab sharing
-- Ensure HTTPS in production (required for `getDisplayMedia`)
-- Verify MediaRecorder API support in browser
-
-### Transcription Not Working
-
-- Verify `GEMINI_API_KEY` is set correctly
-- Check Socket.io connection (browser console)
-- Ensure audio chunks are being sent (check network tab)
-
-### Database Connection Issues
-
-- Verify `DATABASE_URL` format
-- Ensure PostgreSQL is running
-- Run `npm run prisma:migrate` to create tables
+- `npm run prisma:migrate` - Execute database migrations
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions welcome! Please open an issue or PR.

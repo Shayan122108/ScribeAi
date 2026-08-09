@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/sessions
- * Fetch all sessions for the authenticated user
+ * Fetch all sessions for the authenticated user.
  */
 export async function GET(request: NextRequest) {
   try {
-    // TODO: Extract userId from Better Auth session
-    const searchParams = request.nextUrl.searchParams;
-    const userId = searchParams.get("userId") || "demo-user"; // Temporary for demo
+    const session = await auth.api.getSession({
+      headers: request.headers
+    });
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const sessions = await prisma.session.findMany({
-      where: { userId },
+      where: { userId: session.user.id },
       include: {
         summary: true,
         transcript: {
@@ -35,4 +40,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

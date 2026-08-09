@@ -148,6 +148,19 @@ type UseRecorderOptions = {
 
 const CHUNK_DURATION_MS = 5000; // Reduced to 5s for faster processing
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      // Remove the data URL prefix
+      resolve(base64.split(',')[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function useRecorderMachine({ user }: UseRecorderOptions) {
   const [state, send] = useMachine(recorderMachine);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -155,7 +168,6 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
   const socketRef = useRef<Socket | null>(null);
   const sequenceRef = useRef(0);
   const chunksRef = useRef<Blob[]>([]);
-  const currentSessionIdRef = useRef<string | undefined>(undefined);
 
   const [isSupported, setIsSupported] = useState<boolean>(true);
   const [browserError, setBrowserError] = useState<string | null>(null);
@@ -241,18 +253,6 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
     }
   }, []);
 
-  const blobToBase64 = async (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        // Remove the data URL prefix
-        resolve(base64.split(',')[1]);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  };
 
   const emitChunk = useCallback(
     async (blob: Blob, sessionId: string, mimeType: string) => {
@@ -324,11 +324,6 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
 
   const createRecorder = useCallback(async (source: RecordingSource, sessionId: string) => {
     console.log('Creating recorder for source:', source, 'session:', sessionId);
-
-    const compatibilityError = getBrowserCompatibilityError();
-    if (compatibilityError) {
-      throw new Error(compatibilityError);
-    }
 
     let stream: MediaStream;
 
@@ -546,7 +541,6 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
 
         const sessionId = crypto.randomUUID();
         console.log('Starting session:', sessionId);
-        currentSessionIdRef.current = sessionId;
 
         // Reset sequence counter
         sequenceRef.current = 0;
@@ -692,7 +686,6 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
     recorderRef.current = null;
     sequenceRef.current = 0;
     chunksRef.current = [];
-    currentSessionIdRef.current = undefined;
 
     console.log('Reset complete');
     send({ type: "RESET" });

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { v4 as uuidv4 } from 'uuid';
-
+import { useEffect, useState, useMemo } from "react";
+import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { useRecorderMachine } from "@/hooks/useRecorderMachine";
 import { RecordingSource } from "@/types/session";
@@ -39,12 +38,14 @@ type SessionHistory = {
 };
 
 export default function SessionsPage() {
+  const { data: sessionData, isPending: authLoading } = authClient.useSession();
   const [history, setHistory] = useState<SessionHistory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const user = sessionData?.user ?? { id: "", email: "" };
 
   const recorder = useRecorderMachine({
-    // TODO: wire Better Auth user context
-    user: { id: "demo-user", email: "demo@scribe.ai" }
+    user: { id: user.id, email: user.email }
   });
   
   const {
@@ -67,10 +68,12 @@ export default function SessionsPage() {
   const isProcessing = status === 'PROCESSING';
 
   useEffect(() => {
-    // Fetch session history
+    if (authLoading || !sessionData) return;
+
+    // Fetch session history using session credentials
     const fetchHistory = async () => {
       try {
-        const response = await fetch("/api/sessions?userId=demo-user");
+        const response = await fetch("/api/sessions");
         const data = await response.json();
         if (data.sessions) {
           setHistory(data.sessions);
@@ -79,12 +82,28 @@ export default function SessionsPage() {
         // eslint-disable-next-line no-console
         console.error("Failed to fetch sessions:", err);
       } finally {
-        setLoading(false);
+        setHistoryLoading(false);
       }
     };
 
     fetchHistory();
-  }, [status]); // Refetch when status changes
+  }, [status, authLoading, sessionData]); // Refetch when status or auth state changes
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <p className="text-sm text-white/50">Loading session...</p>
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <p className="text-sm text-red-400">Not authenticated</p>
+      </div>
+    );
+  }
 
   const controls = useMemo(() => {
     const handleStart = async () => {
@@ -225,7 +244,7 @@ export default function SessionsPage() {
         <div className="mt-6 flex-1 space-y-4 overflow-y-auto rounded-xl bg-black/30 p-4">
           {transcript.length === 0 ? (
             <p className="text-sm text-white/50">
-              Transcript will appear here once Gemini responses stream in.
+              Transcript will appear here once Whisper transcriptions stream in.
             </p>
           ) : (
             transcript.map((chunk) => (
@@ -253,7 +272,7 @@ export default function SessionsPage() {
           <Button variant="ghost">View all sessions</Button>
         </header>
 
-        {loading ? (
+        {historyLoading ? (
           <p className="text-sm text-white/50">Loading sessions...</p>
         ) : (
           <div className="space-y-4">

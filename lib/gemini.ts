@@ -10,7 +10,7 @@ if (!apiKey) {
 const client = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 const transcriptModel = client?.getGenerativeModel({
-  model: "models/gemini-1.5-flash",
+  model: "gemini-2.0-flash",
   generationConfig: {
     temperature: 0.2,
     maxOutputTokens: 4096
@@ -18,9 +18,10 @@ const transcriptModel = client?.getGenerativeModel({
 });
 
 const summaryModel = client?.getGenerativeModel({
-  model: "models/gemini-1.5-flash",
+  model: "gemini-2.0-flash",
   generationConfig: {
     temperature: 0.4,
+    maxOutputTokens: 1024,
     responseMimeType: "application/json"
   }
 });
@@ -52,14 +53,11 @@ ${transcript}`;
   const result = await summaryModel.generateContent(prompt);
   const text = result.response.text();
 
+  // responseMimeType is set to "application/json" so the model returns valid JSON directly
   try {
-    // Try to parse the response as JSON
-    const startIdx = text.indexOf('{');
-    const endIdx = text.lastIndexOf('}') + 1;
-    const jsonStr = text.slice(startIdx, endIdx);
-    return JSON.parse(jsonStr) as GeminiSummary;
+    return JSON.parse(text) as GeminiSummary;
   } catch (e) {
-    // If JSON parsing fails, return a fallback object with the raw text
+    // Fallback in case of unexpected model output
     return {
       keyPoints: text,
       actionItems: "Could not extract action items",
