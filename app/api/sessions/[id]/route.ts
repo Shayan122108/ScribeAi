@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/sessions/[id]
- * Fetch a specific session with full transcript.
+ * Fetch a specific recording session with full transcript.
  */
 export async function GET(
   request: NextRequest,
@@ -20,7 +20,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const record = await prisma.session.findUnique({
+    const record = await prisma.recordingSession.findUnique({
       where: { id: params.id },
       include: {
         summary: true,
@@ -55,7 +55,7 @@ export async function GET(
 
 /**
  * DELETE /api/sessions/[id]
- * Delete a session and all associated data.
+ * Delete a recording session and all associated data.
  * Requires authentication and ownership of the session.
  */
 export async function DELETE(
@@ -72,7 +72,7 @@ export async function DELETE(
     }
 
     // Verify ownership before deleting
-    const record = await prisma.session.findUnique({
+    const record = await prisma.recordingSession.findUnique({
       where: { id: params.id },
       select: { userId: true }
     });
@@ -85,7 +85,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await prisma.session.delete({ where: { id: params.id } });
+    await prisma.recordingSession.delete({ where: { id: params.id } });
 
     return NextResponse.json({ success: true });
   } catch (error) {

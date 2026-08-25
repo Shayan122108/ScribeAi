@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerativeModel } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 const apiKey = process.env.GEMINI_API_KEY;
 
@@ -7,24 +7,7 @@ if (!apiKey) {
   console.warn("GEMINI_API_KEY not found. Streaming will fail until provided.");
 }
 
-const client = apiKey ? new GoogleGenerativeAI(apiKey) : null;
-
-const transcriptModel = client?.getGenerativeModel({
-  model: "gemini-2.0-flash",
-  generationConfig: {
-    temperature: 0.2,
-    maxOutputTokens: 4096
-  }
-});
-
-const summaryModel = client?.getGenerativeModel({
-  model: "gemini-2.0-flash",
-  generationConfig: {
-    temperature: 0.4,
-    maxOutputTokens: 1024,
-    responseMimeType: "application/json"
-  }
-});
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export type GeminiSummary = {
   keyPoints: string;
@@ -33,7 +16,7 @@ export type GeminiSummary = {
 };
 
 export async function summarizeTranscript(transcript: string): Promise<GeminiSummary> {
-  if (!summaryModel) throw new Error("Gemini API key not configured");
+  if (!ai) throw new Error("Gemini API key not configured");
 
   const prompt = `Please analyze the following meeting transcript and provide a structured summary with the following sections:
   - Key points discussed
@@ -50,10 +33,24 @@ Format the response as a JSON object with these exact keys:
 Transcript:
 ${transcript}`;
 
-  const result = await summaryModel.generateContent(prompt);
-  const text = result.response.text();
+  const response = await ai.models.generateContent({
+    model: "gemini-3.5-flash",
+    contents: prompt,
+    config: {
+      temperature: 0.4,
+      responseMimeType: "application/json"
+    }
+  });
 
-  // responseMimeType is set to "application/json" so the model returns valid JSON directly
+  const text = response.text;
+  if (!text) {
+    return {
+      keyPoints: "",
+      actionItems: "Could not extract action items",
+      decisions: "Could not extract decisions"
+    };
+  }
+
   try {
     return JSON.parse(text) as GeminiSummary;
   } catch (e) {
@@ -64,11 +61,4 @@ ${transcript}`;
       decisions: "Could not extract decisions"
     };
   }
-}
-
-export function getTranscriptModel(): GenerativeModel {
-  if (!transcriptModel) {
-    throw new Error("Gemini client not configured");
-  }
-  return transcriptModel;
 }

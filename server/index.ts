@@ -62,7 +62,7 @@ io.on("connection", (socket) => {
       update: { email: userEmail }
     });
 
-    await prisma.session.upsert({
+    await prisma.recordingSession.upsert({
       where: { id: sessionId },
       create: { id: sessionId, userId, status: "RECORDING", source },
       update: { status: "RECORDING" }
@@ -94,9 +94,16 @@ io.on("connection", (socket) => {
 
     if (!transcriptText && payload.audio) {
       try {
+        let previousText = "";
+        if (store && store.length > 1) {
+          // Pass the previous chunk's text to Whisper to provide context
+          previousText = store[store.length - 2].text || "";
+        }
+
         const transcription = await transcribeAudio(
           payload.audio,
-          payload.mimeType
+          payload.mimeType,
+          previousText
         );
         transcriptText = transcription.text;
         speakerTag = transcription.speakerTag;
@@ -122,7 +129,7 @@ io.on("connection", (socket) => {
 
   socket.on("session:pause", async ({ sessionId }) => {
     if (!sessionId) return;
-    await prisma.session.update({
+    await prisma.recordingSession.update({
       where: { id: sessionId },
       data: { status: "PAUSED" }
     });
@@ -131,7 +138,7 @@ io.on("connection", (socket) => {
 
   socket.on("session:resume", async ({ sessionId }) => {
     if (!sessionId) return;
-    await prisma.session.update({
+    await prisma.recordingSession.update({
       where: { id: sessionId },
       data: { status: "RECORDING" }
     });
@@ -145,7 +152,7 @@ io.on("connection", (socket) => {
     // Filter out empty/failed chunks before building the transcript
     const transcript = chunks.map((c) => c.text).filter(Boolean).join("\n");
 
-    await prisma.session.update({
+    await prisma.recordingSession.update({
       where: { id: sessionId },
       data: { status: "PROCESSING", endedAt: new Date() }
     });
@@ -188,7 +195,7 @@ io.on("connection", (socket) => {
         }
       });
 
-      await prisma.session.update({
+      await prisma.recordingSession.update({
         where: { id: sessionId },
         data: { status: "COMPLETED" }
       });
@@ -200,7 +207,7 @@ io.on("connection", (socket) => {
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error("Failed to process summary for session", sessionId, ":", error);
-      await prisma.session.update({
+      await prisma.recordingSession.update({
         where: { id: sessionId },
         data: { status: "FAILED" }
       });

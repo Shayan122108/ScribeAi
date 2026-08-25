@@ -146,7 +146,7 @@ type UseRecorderOptions = {
   user: { id: string; email: string };
 };
 
-const CHUNK_DURATION_MS = 5000; // Reduced to 5s for faster processing
+const CHUNK_DURATION_MS = 15000; // Increased to 15s for better Whisper context and accuracy
 
 async function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {

@@ -24,7 +24,8 @@ const WHISPER_LANGUAGE = process.env.WHISPER_LANGUAGE ?? undefined;
  */
 export async function transcribeAudio(
     audioBase64: string,
-    mimeType: string = "audio/webm"
+    mimeType: string = "audio/webm",
+    prompt?: string
 ): Promise<{ text: string; speakerTag: string }> {
     if (!openai) {
         throw new Error("OpenAI client not configured. Please set OPENAI_API_KEY.");
@@ -45,6 +46,7 @@ export async function transcribeAudio(
             file,
             model: WHISPER_MODEL,
             ...(WHISPER_LANGUAGE ? { language: WHISPER_LANGUAGE } : {}),
+            ...(prompt ? { prompt } : {}),
             response_format: "text",
         });
 

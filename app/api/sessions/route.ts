@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 /**
  * GET /api/sessions
- * Fetch all sessions for the authenticated user.
+ * Fetch all recording sessions for the authenticated user.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const sessions = await prisma.session.findMany({
+    const sessions = await prisma.recordingSession.findMany({
       where: { userId: session.user.id },
       include: {
         summary: true,

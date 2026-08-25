@@ -89,25 +89,9 @@ export default function SessionsPage() {
     fetchHistory();
   }, [status, authLoading, sessionData]); // Refetch when status or auth state changes
 
-  if (authLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <p className="text-sm text-white/50">Loading session...</p>
-      </div>
-    );
-  }
-
-  if (!sessionData) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <p className="text-sm text-red-400">Not authenticated</p>
-      </div>
-    );
-  }
-
+  // useMemo must be called before any early returns (Rules of Hooks)
   const controls = useMemo(() => {
     const handleStart = async () => {
-      // The session ID will be generated and handled by the useRecorderMachine hook
       startRecording(source as RecordingSource);
     };
 
@@ -142,21 +126,13 @@ export default function SessionsPage() {
       case "FAILED":
         return (
           <>
-            <Button 
-              onClick={handleStart}
-            >
-              Start New
-            </Button>
+            <Button onClick={handleStart}>Start New</Button>
           </>
         );
       case "IDLE":
       default:
         return (
-          <Button 
-            onClick={handleStart}
-          >
-            Start Recording
-          </Button>
+          <Button onClick={handleStart}>Start Recording</Button>
         );
     }
   }, [
@@ -167,6 +143,22 @@ export default function SessionsPage() {
     status,
     stopRecording
   ]);
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <p className="text-sm text-white/50">Loading session...</p>
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <p className="text-sm text-red-400">Not authenticated</p>
+      </div>
+    );
+  }
 
   const formatDuration = (startedAt: string, endedAt?: string) => {
     if (!endedAt) return "In progress";
