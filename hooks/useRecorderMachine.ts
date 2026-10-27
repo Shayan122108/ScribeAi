@@ -29,7 +29,7 @@ type RecorderEvent =
   | { type: "STOP" }
   | { type: "RESET" }
   | { type: "TRANSCRIPT"; update: TranscriptUpdate }
-  | { type: "SUMMARY"; summary: SessionSummary }
+  | { type: "SUMMARY"; summary?: SessionSummary }
   | { type: "ERROR"; error: string }
   | { type: "SET_SOURCE"; source: RecordingSource };
 
@@ -45,6 +45,29 @@ const recorderMachine = createMachine({
   types: {} as {
     context: RecorderContext;
     events: RecorderEvent;
+  },
+  // Accept transcript updates in every state, so chunks that finish
+  // transcribing after Stop are not dropped
+  on: {
+    TRANSCRIPT: {
+      guard: ({ context, event }) =>
+        event.update.sessionId === context.sessionId,
+      actions: assign({
+        transcript: ({ context, event }) => {
+          const existingIndex = context.transcript.findIndex(
+            (chunk) => chunk.sequence === event.update.sequence
+          );
+          if (existingIndex >= 0) {
+            const next = [...context.transcript];
+            next[existingIndex] = event.update;
+            return next;
+          }
+          return [...context.transcript, event.update].sort(
+            (a, b) => a.sequence - b.sequence
+          );
+        }
+      })
+    }
   },
   states: {
     idle: {
@@ -68,23 +91,6 @@ const recorderMachine = createMachine({
     },
     recording: {
       on: {
-        TRANSCRIPT: {
-          actions: assign({
-            transcript: ({ context, event }) => {
-              const existingIndex = context.transcript.findIndex(
-                (chunk) => chunk.sequence === event.update.sequence
-              );
-              if (existingIndex >= 0) {
-                const next = [...context.transcript];
-                next[existingIndex] = event.update;
-                return next;
-              }
-              return [...context.transcript, event.update].sort(
-                (a, b) => a.sequence - b.sequence
-              );
-            }
-          })
-        },
         PAUSE: { target: "paused" },
         STOP: { target: "processing" },
         ERROR: {
@@ -141,7 +147,6 @@ const recorderMachine = createMachine({
     }
   }
 });
-
 type UseRecorderOptions = {
   user: { id: string; email: string };
 };
@@ -220,13 +225,13 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
 
     socket.on(
       "session:status",
-      (payload: { status: SessionStatus; summary?: SessionSummary }) => {
+      (payload: { status: SessionStatus; summary?: SessionSummary | null }) => {
         console.log("Session status update:", payload);
         if (payload.status === "PROCESSING") {
           send({ type: "STOP" });
         }
-        if (payload.status === "COMPLETED" && payload.summary) {
-          send({ type: "SUMMARY", summary: payload.summary });
+        if (payload.status === "COMPLETED") {
+          send({ type: "SUMMARY", summary: payload.summary ?? undefined });
         }
       }
     );
