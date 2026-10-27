@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
+import { SearchInput } from "@/components/ui/search-input";
 import { useRecorderMachine } from "@/hooks/useRecorderMachine";
 import { RecordingSource } from "@/types/session";
 
@@ -37,10 +38,34 @@ type SessionHistory = {
   }>;
 };
 
+/** Highlight all case-insensitive occurrences of `term` in `text`. */
+function highlightMatch(text: string, term: string) {
+  if (!term.trim()) return text;
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`(${escaped})`, "gi"));
+  return parts.map((part, i) =>
+    new RegExp(`^${escaped}$`, "i").test(part) ? (
+      <mark
+        key={i}
+        className="rounded bg-yellow-400/30 px-0.5 text-yellow-200 not-italic"
+      >
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
+}
+
 export default function SessionsPage() {
   const { data: sessionData, isPending: authLoading } = authClient.useSession();
   const [history, setHistory] = useState<SessionHistory[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+
+  // ─── Search state ────────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<SessionHistory[] | null>(null);
 
   const user = sessionData?.user ?? { id: "", email: "" };
 
@@ -63,8 +88,11 @@ export default function SessionsPage() {
   } = recorder;
   
   // Derive state booleans from status
+  // eslint-disable-next-line no-unused-vars
   const isRecording = status === 'RECORDING';
+  // eslint-disable-next-line no-unused-vars
   const isPaused = status === 'PAUSED';
+  // eslint-disable-next-line no-unused-vars
   const isProcessing = status === 'PROCESSING';
 
   useEffect(() => {
@@ -88,6 +116,31 @@ export default function SessionsPage() {
 
     fetchHistory();
   }, [status, authLoading, sessionData]); // Refetch when status or auth state changes
+
+  // ─── Search handler ─────────────────────────────────────────────────────────
+  const handleSearch = useCallback(async (query: string) => {
+    setSearchQuery(query);
+
+    if (!query.trim()) {
+      // Empty query → go back to showing the full history list
+      setSearchResults(null);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const encoded = encodeURIComponent(query.trim());
+      const res = await fetch(`/api/sessions/search?q=${encoded}`);
+      const data = await res.json();
+      setSearchResults(data.sessions ?? []);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("Search failed:", err);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, []);
 
   // useMemo must be called before any early returns (Rules of Hooks)
   const controls = useMemo(() => {
@@ -187,13 +240,13 @@ export default function SessionsPage() {
             {Object.entries(SOURCE_LABELS).map(([value, label]) => (
               <button
                 key={value}
-                onClick={() => setSource(value as RecordingSource)}
                 className={`flex-1 rounded-lg border px-3 py-2 text-sm ${
                   source === value
                     ? "border-brand bg-brand/20 text-white"
                     : "border-white/10 text-white/70 hover:border-white/30"
                 }`}
                 disabled={status !== "IDLE"}
+                onClick={() => setSource(value as RecordingSource)}
               >
                 {label}
               </button>
@@ -256,51 +309,120 @@ export default function SessionsPage() {
       </section>
 
       <section className="mx-auto mt-8 max-w-6xl rounded-2xl border border-white/5 bg-black/40 p-6 md:col-span-2">
-        <header className="mb-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-wide text-white/60">History</p>
-            <h2 className="text-2xl font-semibold text-white">Recent sessions</h2>
+        <header className="mb-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm uppercase tracking-wide text-white/60">History</p>
+              <h2 className="text-2xl font-semibold text-white">
+                {searchQuery ? "Search results" : "Recent sessions"}
+              </h2>
+            </div>
+            {searchQuery && (
+              <p className="text-sm text-white/40">
+                {isSearching
+                  ? "Searching…"
+                  : `${searchResults?.length ?? 0} result${searchResults?.length === 1 ? "" : "s"} for "${searchQuery}"`}
+              </p>
+            )}
           </div>
-          <Button variant="ghost">View all sessions</Button>
+
+          {/* ── Search bar ── */}
+          <SearchInput
+            isSearching={isSearching}
+            onSearch={handleSearch}
+            placeholder="Search transcripts & summaries…"
+            value={searchQuery}
+          />
         </header>
 
         {historyLoading ? (
-          <p className="text-sm text-white/50">Loading sessions...</p>
+          // Initial history load skeleton
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-16 animate-pulse rounded-xl border border-white/5 bg-white/5"
+              />
+            ))}
+          </div>
         ) : (
           <div className="space-y-4">
-            {history.length === 0 ? (
-              <p className="text-sm text-white/50">No sessions yet. Start recording to create one!</p>
-            ) : (
-              history.map((session) => (
-                <div
-                  key={session.id}
-                  className="rounded-xl border border-white/5 bg-white/5 p-4 text-white/80"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div>
-                      <p className="font-semibold text-white">
-                        Session {session.id.slice(0, 8)}
-                      </p>
-                      {session.summary ? (
-                        <p className="text-sm text-white/60">
-                          {session.summary.keyPoints.slice(0, 100)}...
+            {/* Determine which list to show */}
+            {(() => {
+              const displayList = searchResults !== null ? searchResults : history;
+              const isEmptySearch = searchQuery && searchResults?.length === 0 && !isSearching;
+
+              if (isEmptySearch) {
+                return (
+                  <div className="flex flex-col items-center gap-2 py-10 text-center">
+                    <svg
+                      aria-hidden="true"
+                      className="text-white/20"
+                      fill="none"
+                      height="32"
+                      stroke="currentColor"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="1.5"
+                      viewBox="0 0 24 24"
+                      width="32"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" x2="16.65" y1="21" y2="16.65" />
+                    </svg>
+                    <p className="text-sm text-white/50">
+                      No sessions matched &ldquo;{searchQuery}&rdquo;
+                    </p>
+                    <p className="text-xs text-white/30">
+                      Try different keywords or clear the search to see all sessions.
+                    </p>
+                  </div>
+                );
+              }
+
+              if (displayList.length === 0) {
+                return (
+                  <p className="text-sm text-white/50">
+                    No sessions yet. Start recording to create one!
+                  </p>
+                );
+              }
+
+              return displayList.map((session) => {
+                // Pick a snippet: prefer summary keyPoints, fall back to first transcript chunk
+                const rawSnippet =
+                  session.summary?.keyPoints ??
+                  session.transcript?.[0]?.text ??
+                  "No transcript yet";
+                const snippet = rawSnippet.slice(0, 120);
+
+                return (
+                  <div
+                    key={session.id}
+                    className="rounded-xl border border-white/5 bg-white/5 p-4 text-white/80 transition-colors hover:border-white/10 hover:bg-white/8"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-white">
+                          Session {session.id.slice(0, 8)}
                         </p>
-                      ) : (
-                        <p className="text-sm text-white/60">
-                          {session.transcript?.[0]?.text.slice(0, 100) || "No transcript yet"}...
+                        <p className="mt-0.5 truncate text-sm text-white/60">
+                          {highlightMatch(snippet, searchQuery)}
+                          {rawSnippet.length > 120 ? "…" : ""}
                         </p>
-                      )}
-                    </div>
-                    <div className="text-right text-sm text-white/60">
-                      <p>{formatDuration(session.startedAt, session.endedAt)}</p>
-                      <p className={`${STATUS_COLORS[session.status]}`}>
-                        {session.status}
-                      </p>
+                      </div>
+                      <div className="text-right text-sm text-white/60">
+                        <p>{formatDuration(session.startedAt, session.endedAt)}</p>
+                        <p className={`${STATUS_COLORS[session.status]}`}>
+                          {session.status}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))
-            )}
+                );
+              });
+            })()}
           </div>
         )}
       </section>

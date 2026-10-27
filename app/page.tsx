@@ -8,12 +8,12 @@ export default function HomePage() {
         
         {/* Logo */}
         <Image
-          src="/next.svg"
-          alt="App Logo"
-          width={100}
-          height={20}
           priority
+          alt="App Logo"
           className="dark:invert"
+          height={20}
+          src="/next.svg"
+          width={100}
         />
 
         {/* Tagline pill */}
@@ -49,18 +49,18 @@ export default function HomePage() {
         {/* Optional small footer links from starter template */}
         <div className="flex flex-col gap-2 text-sm opacity-70">
           <a
-            href="https://nextjs.org/learn"
-            target="_blank"
-            rel="noopener noreferrer"
             className="hover:underline"
+            href="https://nextjs.org/learn"
+            rel="noopener noreferrer"
+            target="_blank"
           >
             Learn Next.js
           </a>
           <a
-            href="https://vercel.com/templates"
-            target="_blank"
-            rel="noopener noreferrer"
             className="hover:underline"
+            href="https://vercel.com/templates"
+            rel="noopener noreferrer"
+            target="_blank"
           >
             Explore Templates
           </a>

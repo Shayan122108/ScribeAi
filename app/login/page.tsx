@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -58,41 +58,41 @@ export default function LoginPage() {
           AI-powered meeting transcription
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label
-              htmlFor="email"
               className="mb-2 block text-sm font-medium text-white/80"
+              htmlFor="email"
             >
               Email
             </label>
             <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               required
               className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-white placeholder:text-white/40 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              id="email"
+              onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
+              type="email"
+              value={email}
             />
           </div>
 
           <div>
             <label
-              htmlFor="password"
               className="mb-2 block text-sm font-medium text-white/80"
+              htmlFor="password"
             >
               Password
             </label>
             <input
+              required
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-white placeholder:text-white/40 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               id="password"
+              minLength={6}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-white placeholder:text-white/40 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-              placeholder="••••••••"
             />
           </div>
 
@@ -102,7 +102,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <Button type="submit" disabled={loading} className="w-full">
+          <Button className="w-full" disabled={loading} type="submit">
             {loading
               ? "Loading..."
               : isSignUp
@@ -113,9 +113,9 @@ export default function LoginPage() {
 
         <div className="mt-6 text-center">
           <button
-            type="button"
-            onClick={() => setIsSignUp(!isSignUp)}
             className="text-sm text-white/60 hover:text-white/80"
+            onClick={() => setIsSignUp(!isSignUp)}
+            type="button"
           >
             {isSignUp
               ? "Already have an account? Sign in"
@@ -126,4 +126,3 @@ export default function LoginPage() {
     </div>
   );
 }
-

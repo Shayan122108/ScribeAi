@@ -3,7 +3,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import { clsx } from "clsx";
 import Link from "next/link";
-import { ButtonHTMLAttributes, forwardRef } from "react";
+import React, { ButtonHTMLAttributes, forwardRef } from "react";
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center rounded-lg font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 ring-offset-slate-950",
@@ -40,7 +40,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     if (asChild && href) {
       return (
-        <Link href={href} className={classes} ref={ref as any}>
+        <Link ref={ref as React.Ref<HTMLAnchorElement>} className={classes} href={href}>
           {children}
         </Link>
       );
