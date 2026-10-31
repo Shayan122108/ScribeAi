@@ -168,7 +168,8 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
   const socketRef = useRef<Socket | null>(null);
   const sequenceRef = useRef(0);
   const chunksRef = useRef<Blob[]>([]);
-
+  const segmentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recorderOptionsRef = useRef<MediaRecorderOptions>({});
   const [isSupported, setIsSupported] = useState<boolean>(true);
   const [browserError, setBrowserError] = useState<string | null>(null);
 
@@ -291,7 +292,52 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
     },
     []
   );
+  // Each recorder produces ONE complete, self-contained file
+  const buildRecorder = useCallback(
+    (stream: MediaStream, sessionId: string) => {
+      const recorder = new MediaRecorder(stream, recorderOptionsRef.current);
 
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          void emitChunk(event.data, sessionId, recorder.mimeType);
+        }
+      };
+
+      recorder.onerror = (event: Event) => {
+        const errorEvent = event as ErrorEvent;
+        send({
+          type: "ERROR",
+          error: `Recording error: ${errorEvent.error?.message || "Unknown error"}`
+        });
+      };
+
+      return recorder;
+    },
+    [emitChunk, send]
+  );
+
+  const startRotation = useCallback(
+    (sessionId: string) => {
+      segmentTimerRef.current = setInterval(() => {
+        const stream = streamRef.current;
+        const old = recorderRef.current;
+        if (!stream || !old || old.state !== "recording") return; // skips while paused
+
+        const next = buildRecorder(stream, sessionId);
+        next.start(); // start the new one first, so there is no gap
+        recorderRef.current = next;
+        old.stop(); // flushes the old one as a complete file
+      }, CHUNK_DURATION_MS);
+    },
+    [buildRecorder]
+  );
+
+  const stopRotation = useCallback(() => {
+    if (segmentTimerRef.current) {
+      clearInterval(segmentTimerRef.current);
+      segmentTimerRef.current = null;
+    }
+  }, []);
   const getBrowserCompatibilityError = (): string | null => {
     if (typeof window === 'undefined') {
       return 'This feature is only available in the browser';
@@ -426,65 +472,24 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
       console.log('Using MIME type:', supportedMimeType);
     }
 
-    let recorder: MediaRecorder;
+    recorderOptionsRef.current = supportedMimeType
+  ? { mimeType: supportedMimeType, audioBitsPerSecond: 128000 }
+  : { audioBitsPerSecond: 128000 };
 
-    try {
-      const options: MediaRecorderOptions = supportedMimeType
-        ? { mimeType: supportedMimeType, audioBitsPerSecond: 128000 }
-        : { audioBitsPerSecond: 128000 };
-
-      recorder = new MediaRecorder(stream, options);
-      console.log('MediaRecorder created successfully');
-      console.log('MediaRecorder state:', recorder.state);
-      console.log('MediaRecorder mimeType:', recorder.mimeType);
-
-    } catch (error) {
-      console.error('Error creating MediaRecorder:', error);
-      throw new Error(`Failed to initialize recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-
-    // Reset chunks when starting new recording
-    chunksRef.current = [];
-
-    recorder.ondataavailable = async (event) => {
-      console.log('Data available event, size:', event.data.size);
-
-      if (event.data && event.data.size > 0) {
-        chunksRef.current.push(event.data);
-        console.log('Chunk added, total chunks:', chunksRef.current.length);
-
-        // Emit chunk to server with explicit session ID and mimeType
-        try {
-          await emitChunk(event.data, sessionId, recorder.mimeType);
-        } catch (error) {
-          console.error('Error emitting chunk:', error);
-        }
-      }
-    };
-
-    recorder.onstart = () => {
-      console.log('MediaRecorder started');
-    };
-
-    recorder.onstop = () => {
-      console.log('MediaRecorder stopped');
-      console.log('Total chunks collected:', chunksRef.current.length);
-    };
-
-    recorder.onerror = (event: Event) => {
-      const errorEvent = event as ErrorEvent;
-      console.error('MediaRecorder error:', errorEvent.error);
-      send({
-        type: "ERROR",
-        error: `Recording error: ${errorEvent.error?.message || 'Unknown error'}`
-      });
-    };
+  let recorder: MediaRecorder;
+  try {
+    recorder = buildRecorder(stream, sessionId);
+    console.log('MediaRecorder created, mimeType:', recorder.mimeType);
+  } catch (error) {
+    console.error('Error creating MediaRecorder:', error);
+    throw new Error(`Failed to initialize recording: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 
     // Track ended handlers
     stream.getAudioTracks().forEach(track => {
       track.onended = () => {
         console.log('Audio track ended unexpectedly');
-        if (recorder.state === 'recording') {
+        if (recorderRef.current?.state === 'recording') {
           send({
             type: "ERROR",
             error: 'Recording stopped: Audio input was disconnected'
@@ -503,7 +508,7 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
 
     recorderRef.current = recorder;
     return recorder;
-  }, [emitChunk, send]);
+  }, [buildRecorder, send]);
 
   const startRecording = useCallback(
     async (source: RecordingSource) => {
@@ -560,7 +565,8 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
         const recorder = await createRecorder(source, sessionId);
 
         console.log('Starting MediaRecorder with timeslice:', CHUNK_DURATION_MS);
-        recorder.start(CHUNK_DURATION_MS);
+        recorder.start(); // no timeslice: this segment is one complete file
+        startRotation(sessionId); 
 
         console.log('Recording started successfully with session ID:', sessionId);
 
@@ -570,7 +576,7 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
         send({ type: "ERROR", error: message });
       }
     },
-    [send, user.email, user.id, createRecorder]
+    [send, user.email, user.id, createRecorder, startRotation]
   );
 
   const pauseRecording = useCallback(() => {
@@ -607,7 +613,7 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
 
   const stopRecording = useCallback(async () => {
     console.log('Stopping recording...');
-
+    stopRotation();
     const recorder = recorderRef.current;
     const socket = socketRef.current;
 
@@ -669,11 +675,11 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
         error: `Failed to stop recording: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
     }
-  }, [send, state.context.sessionId, stopTracks]);
+  }, [send, state.context.sessionId, stopTracks, stopRotation]);
 
   const reset = useCallback(() => {
     console.log('Resetting recorder...');
-
+    stopRotation();
     // Stop recorder if active
     if (recorderRef.current && recorderRef.current.state !== 'inactive') {
       recorderRef.current.stop();
@@ -689,7 +695,7 @@ export function useRecorderMachine({ user }: UseRecorderOptions) {
 
     console.log('Reset complete');
     send({ type: "RESET" });
-  }, [send, stopTracks]);
+  }, [send, stopTracks, stopRotation]);
 
   const setSource = useCallback(
     (source: RecordingSource) => {
