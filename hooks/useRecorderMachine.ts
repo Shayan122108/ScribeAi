@@ -125,6 +125,16 @@ const recorderMachine = createMachine({
     },
     completed: {
       on: {
+                START: {
+          target: "recording",
+          actions: assign({
+            sessionId: ({ event }) => event.sessionId,
+            source: ({ event }) => event.source,
+            transcript: () => [],
+            summary: () => undefined,
+            error: () => undefined
+          })
+        },
         RESET: {
           target: "idle",
           actions: assign(() => defaultContext)
@@ -133,6 +143,16 @@ const recorderMachine = createMachine({
     },
     failed: {
       on: {
+                START: {
+          target: "recording",
+          actions: assign({
+            sessionId: ({ event }) => event.sessionId,
+            source: ({ event }) => event.source,
+            transcript: () => [],
+            summary: () => undefined,
+            error: () => undefined
+          })
+        },
         RESET: {
           target: "idle",
           actions: assign(() => defaultContext)
