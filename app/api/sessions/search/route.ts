@@ -76,11 +76,19 @@ export async function GET(request: NextRequest) {
       select: { sessionId: true },
       distinct: ["sessionId"]
     });
-
+        // ─── Step 3: Find sessions whose ID matches the query (full or partial) ───
+    const idMatches = await prisma.recordingSession.findMany({
+      where: {
+        userId: authSession.user.id,
+        id: { contains: rawQuery, mode: "insensitive" }
+      },
+      select: { id: true }
+    });
     // ─── Merge unique session IDs from both sources ───────────────────────────
-    const sessionIdSet = new Set<string>([
+        const sessionIdSet = new Set<string>([
       ...summaryMatches.map((m) => m.sessionId),
-      ...transcriptMatches.map((m) => m.sessionId)
+      ...transcriptMatches.map((m) => m.sessionId),
+      ...idMatches.map((m) => m.id)
     ]);
 
     if (sessionIdSet.size === 0) {

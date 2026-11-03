@@ -7,7 +7,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { useRecorderMachine } from "@/hooks/useRecorderMachine";
 import { RecordingSource } from "@/types/session";
 import { SoundBars } from "@/components/ui/SoundBars";
-
+import Link from "next/link";
 
 const STATUS_COLORS: Record<string, string> = {
   IDLE: "bg-white/10 text-white",
@@ -444,9 +444,10 @@ export default function SessionsPage() {
                 const snippet = rawSnippet.slice(0, 120);
 
                 return (
-                  <div
+                  <Link
                     key={session.id}
-                    className="rounded-xl border border-white/5 bg-white/5 p-4 text-white/80 transition-colors hover:border-white/10 hover:bg-white/8"
+                    href={`/sessions/${session.id}`}
+                    className="block rounded-xl border border-white/5 bg-white/5 p-4 text-white/80 transition-colors hover:border-white/10 hover:bg-white/8"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-4">
                       <div className="min-w-0 flex-1">
@@ -465,7 +466,7 @@ export default function SessionsPage() {
                         </p>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 );
               });
             })()}
